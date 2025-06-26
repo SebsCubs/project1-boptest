@@ -4,6 +4,7 @@ import { validateTestid } from './validators'
 import * as boptestLib from '../lib/boptestLib'
 import messaging from '../lib/messaging'
 import * as middleware from './middleware'
+import redis from '../redis'
 
 const boptestRoutes = express.Router()
 const ibpsaNamespace = 'ibpsa'
@@ -463,5 +464,101 @@ boptestRoutes.all('/users', middleware.identify)
 boptestRoutes.all('/users/*', middleware.identify)
 boptestRoutes.all('/users/:userName', middleware.requireUser)
 boptestRoutes.all('/users/:userName/*', middleware.requireUser)
+
+// Clear job queue (No authentication required for local development)
+boptestRoutes.delete('/admin/queue/clear',
+  async (req, res, next) => {
+    try {
+      await redis.del('jobs')
+      res.json({ status: 200, message: "Job queue cleared successfully", payload: {} })
+    } catch (e) {
+      next(e)
+    }
+  }
+);
+
+// Get queue status (No authentication required for local development)
+boptestRoutes.get('/admin/queue/status',
+  async (req, res, next) => {
+    try {
+      const queueLength = await redis.llen('jobs')
+      res.json({ 
+        status: 200, 
+        message: "Queue status retrieved successfully", 
+        payload: { queueLength } 
+      })
+    } catch (e) {
+      next(e)
+    }
+  }
+);
+
+// Get all tests with worker assignments (No authentication required for local development)
+boptestRoutes.get('/admin/tests/workers',
+  async (req, res, next) => {
+    try {
+      // Get all test keys
+      const testKeys = await redis.keys('tests:*')
+      const tests = []
+      
+      for (const testKey of testKeys) {
+        const testid = testKey.toString().replace('tests:', '')
+        const testData = await redis.hgetall(testKey)
+        
+        if (testData) {
+          tests.push({
+            testid: testid,
+            status: testData.status ? testData.status.toString() : null,
+            timestamp: testData.timestamp ? testData.timestamp.toString() : null,
+            user: testData.user ? testData.user.toString() : null,
+            host: testData.host ? testData.host.toString() : 'Not assigned'
+          })
+        }
+      }
+      
+      res.json({ 
+        status: 200, 
+        message: "Worker assignments retrieved successfully", 
+        payload: { tests } 
+      })
+    } catch (e) {
+      next(e)
+    }
+  }
+);
+
+// Get worker assignment for specific test (No authentication required for local development)
+boptestRoutes.get('/admin/tests/:testid/worker',
+  async (req, res, next) => {
+    try {
+      const testid = req.params.testid
+      const testKey = `tests:${testid}`
+      
+      if (!await redis.exists(testKey)) {
+        return res.status(404).json({ 
+          status: 404, 
+          message: "Test not found", 
+          payload: {} 
+        })
+      }
+      
+      const testData = await redis.hgetall(testKey)
+      
+      res.json({ 
+        status: 200, 
+        message: "Worker assignment retrieved successfully", 
+        payload: {
+          testid: testid,
+          status: testData.status ? testData.status.toString() : null,
+          timestamp: testData.timestamp ? testData.timestamp.toString() : null,
+          user: testData.user ? testData.user.toString() : null,
+          host: testData.host ? testData.host.toString() : 'Not assigned'
+        } 
+      })
+    } catch (e) {
+      next(e)
+    }
+  }
+);
 
 export default boptestRoutes;

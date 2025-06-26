@@ -22,5 +22,7 @@ redis.smembers = promisify(redis.client.smembers).bind(redis.client)
 redis.sscan = promisify(redis.client.sscan).bind(redis.client)
 redis.rpush = promisify(redis.client.rpush).bind(redis.client)
 redis.lpop = promisify(redis.client.lpop).bind(redis.client)
+redis.llen = promisify(redis.client.llen).bind(redis.client)
+redis.keys = promisify(redis.client.keys).bind(redis.client)
 
 export default redis
